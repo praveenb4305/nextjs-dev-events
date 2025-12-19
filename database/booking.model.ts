@@ -1,0 +1,68 @@
+import { Document, model, models, Schema, Types } from "mongoose";
+import mongoose from "mongoose";
+import Event from './event.model'
+
+export interface IBooking extends Document {
+    eventId: Types.ObjectId;
+    email: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const BookingSchema = new Schema({
+    eventId: {
+        type: Schema.Types.ObjectId,
+        ref: "Event",
+        required: [true, "The event id is required"],
+    },
+    email: {
+        type: String,
+        required: [true, "The email is required"],
+        trim: true,
+        lowercase: true,
+        validate: {
+            validator: function (email: string) {
+            //     RFC 5322 compliant email validation regex
+                const emailRegex =
+                    /^(?:[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-zA-Z0-9-]*[a-zA-Z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])$/;
+                return emailRegex.test(email);
+            }
+        },
+        message: 'Please enter a valid email address',
+    }
+},{
+    timestamps: true
+})
+
+BookingSchema.pre('save', async function () {
+    const booking = this as IBooking;
+
+    // Only validate eventId if it's new or modified
+    if (booking.isModified('eventId') || booking.isNew) {
+        try {
+            const eventExists = await Event.findById(booking.eventId).select('_id');
+
+            if (!eventExists) {
+                const error = new Error(`Event with ID ${booking.eventId} does not exist`);
+                error.name = 'ValidationError';
+                return error;
+            }
+        } catch {
+            const validationError = new Error('Invalid events ID format or database error');
+            validationError.name = 'ValidationError';
+            return validationError;
+        }
+    }
+});
+
+BookingSchema.index({ eventId: 1 });
+
+BookingSchema.index({ eventId: 1 , createdAt: -1 });
+
+BookingSchema.index({ email: 1 });
+
+BookingSchema.index({ eventId: 1, email: 1 }, {unique: true, name: 'uniq_event_email'});
+const Booking = models.Booking || model<IBooking>('Booking', BookingSchema);
+
+export default Booking;
+
